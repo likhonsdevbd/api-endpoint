@@ -397,6 +397,23 @@ async def index_page(request: Request):
             font-size: 1.2em;
             opacity: 0.9;
         }}
+
+
+@app.get("/health")
+async def health_check():
+    """JSON health check endpoint."""
+    keys = api_keys_state["keys"] if api_keys_state["keys"] else initialize_api_keys()
+    available_keys = sum(1 for key in keys if is_key_available(key))
+    
+    return {
+        "status": "healthy",
+        "service": "Anthropic API Gateway (Gemini Backend)",
+        "total_api_keys": len(keys),
+        "available_api_keys": available_keys,
+        "rate_limited_keys": len(api_keys_state["rate_limited"]),
+        "version": "1.1.0"
+    }
+
         .status {{
             display: flex;
             justify-content: space-around;
@@ -429,23 +446,6 @@ async def index_page(request: Request):
             font-size: 1.8em;
             border-bottom: 2px solid #667eea;
             padding-bottom: 10px;
-
-
-@app.get("/health")
-async def health_check():
-    """JSON health check endpoint."""
-    keys = api_keys_state["keys"] if api_keys_state["keys"] else initialize_api_keys()
-    available_keys = sum(1 for key in keys if is_key_available(key))
-    
-    return {
-        "status": "healthy",
-        "service": "Anthropic API Gateway (Gemini Backend)",
-        "total_api_keys": len(keys),
-        "available_api_keys": available_keys,
-        "rate_limited_keys": len(api_keys_state["rate_limited"]),
-        "version": "1.1.0"
-    }
-
         }}
         .section h3 {{
             color: #555;
