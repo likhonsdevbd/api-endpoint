@@ -567,7 +567,8 @@ async def index_page(request: Request):
   ],
   "defaultProvider": "Gemini Gateway",
   "model": "claude-3-5-sonnet-20241022",
-  "maxTokens": 4096
+  "maxTokens": 4096,
+  "env": {{}}
 }}</pre>
                 </div>
                 
