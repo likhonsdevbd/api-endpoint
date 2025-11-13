@@ -10,10 +10,4 @@
       "src": "/(.*)",
       "dest": "api/main.py"
     }
-  ],
-  "env": {
-    "GEMINI_API_KEY": "@gemini_api_key",
-    "GEMINI_API_KEY2": "@gemini_api_key2",
-    "GEMINI_API_KEY3": "@gemini_api_key3"
-  }
 }
