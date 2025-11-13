@@ -58,7 +58,14 @@ A FastAPI application that provides an Anthropic API-compatible endpoint using G
    - Multi-turn conversation support with text message preservation
    - Metadata support (accepted but not sent to Gemini)
 
-5. **Limitations & Explicit Rejections**:
+5. **Intelligent API Key Rotation** (NEW in v1.1.0):
+   - **Automatic Rate Limit Detection**: Server automatically detects when a Gemini API key hits rate limits
+   - **Smart Key Switching**: Immediately switches to next available key without failing the request
+   - **Temporary Key Disable**: Rate-limited keys are temporarily disabled for 60 seconds
+   - **Health Monitoring**: `/` endpoint shows total, available, and rate-limited key counts
+   - **Zero-Downtime**: As long as one key is available, requests continue seamlessly
+
+6. **Limitations & Explicit Rejections**:
    - **Tool Definitions**: Requests with `tools` parameter are rejected with clear error messages. Gemini does not support Anthropic's tool invocation format.
    - **Tool Use/Result Blocks**: Requests with `tool_use` or `tool_result` content blocks are rejected. For tool-based workflows, execute tools externally and send only the text results in regular message blocks.
    - **Thinking Blocks**: Requests with `thinking` enabled are rejected. Gemini does not support Anthropic's thinking block format.

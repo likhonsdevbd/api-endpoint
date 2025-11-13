@@ -1,3 +1,4 @@
+
 import os
 import json
 import time
@@ -66,7 +67,13 @@ MODEL_MAPPING = {
     "claude-3.5-sonnet": "gemini-1.5-pro",
 }
 
-api_key_cycle = None
+# Global state for API key management
+api_keys_state = {
+    "keys": [],
+    "current_index": 0,
+    "rate_limited": {},  # key -> timestamp when rate limit expires
+    "failed_counts": {}  # key -> consecutive failure count
+}
 
 def get_api_keys() -> List[str]:
     """Collect all GEMINI_API_KEY environment variables."""
@@ -85,6 +92,23 @@ def get_api_keys() -> List[str]:
     
     return keys
 
+def initialize_api_keys():
+    """Initialize the API keys state."""
+    keys = get_api_keys()
+    if not keys:
+        raise AnthropicError(
+            "No GEMINI_API_KEY environment variables configured. Please set GEMINI_API_KEY.",
+            error_type="authentication_error",
+            status_code=401
+        )
+    
+    api_keys_state["keys"] = keys
+    api_keys_state["current_index"] = 0
+    api_keys_state["rate_limited"] = {}
+    api_keys_state["failed_counts"] = {key: 0 for key in keys}
+    
+    return keys
+
 class AnthropicError(Exception):
     """Custom exception for Anthropic-compatible errors."""
     def __init__(self, message: str, error_type: str = "api_error", status_code: int = 500):
@@ -93,22 +117,82 @@ class AnthropicError(Exception):
         self.status_code = status_code
         super().__init__(self.message)
 
-def get_next_api_key() -> str:
-    """Get the next API key in rotation."""
-    global api_key_cycle
+def is_rate_limit_error(error: Exception) -> bool:
+    """Check if error is a rate limit error."""
+    error_str = str(error).lower()
+    return any(keyword in error_str for keyword in [
+        "rate limit", "quota", "429", "resource exhausted", 
+        "too many requests", "rate_limit_exceeded"
+    ])
+
+def mark_key_rate_limited(api_key: str, duration: int = 60):
+    """Mark an API key as rate limited for a specific duration."""
+    api_keys_state["rate_limited"][api_key] = time.time() + duration
+    api_keys_state["failed_counts"][api_key] = api_keys_state["failed_counts"].get(api_key, 0) + 1
+    print(f"[API Key Manager] Key ending in ...{api_key[-6:]} marked as rate limited for {duration}s")
+
+def is_key_available(api_key: str) -> bool:
+    """Check if an API key is available (not rate limited)."""
+    if api_key in api_keys_state["rate_limited"]:
+        if time.time() < api_keys_state["rate_limited"][api_key]:
+            return False
+        else:
+            del api_keys_state["rate_limited"][api_key]
+            api_keys_state["failed_counts"][api_key] = 0
+            print(f"[API Key Manager] Key ending in ...{api_key[-6:]} is now available again")
+    return True
+
+def get_next_available_key() -> str:
+    """Get the next available API key that is not rate limited."""
+    if not api_keys_state["keys"]:
+        initialize_api_keys()
     
-    api_keys = get_api_keys()
-    if not api_keys:
-        raise AnthropicError(
-            "No GEMINI_API_KEY environment variables configured. Please set GEMINI_API_KEY.",
-            error_type="authentication_error",
-            status_code=401
-        )
+    keys = api_keys_state["keys"]
+    attempts = 0
+    max_attempts = len(keys) * 2
     
-    if api_key_cycle is None:
-        api_key_cycle = cycle(api_keys)
+    while attempts < max_attempts:
+        current_key = keys[api_keys_state["current_index"]]
+        api_keys_state["current_index"] = (api_keys_state["current_index"] + 1) % len(keys)
+        
+        if is_key_available(current_key):
+            print(f"[API Key Manager] Using key ending in ...{current_key[-6:]}")
+            return current_key
+        
+        attempts += 1
     
-    return next(api_key_cycle)
+    raise AnthropicError(
+        "All API keys are currently rate limited. Please try again later.",
+        error_type="rate_limit_error",
+        status_code=429
+    )
+
+def execute_with_key_rotation(func, *args, **kwargs):
+    """Execute a function with automatic key rotation on rate limit errors."""
+    keys = api_keys_state["keys"] if api_keys_state["keys"] else initialize_api_keys()
+    max_retries = len(keys)
+    
+    for attempt in range(max_retries):
+        try:
+            api_key = get_next_available_key()
+            genai.configure(api_key=api_key)
+            result = func(*args, **kwargs)
+            api_keys_state["failed_counts"][api_key] = 0
+            return result
+        except Exception as e:
+            if is_rate_limit_error(e):
+                mark_key_rate_limited(api_key, duration=60)
+                if attempt < max_retries - 1:
+                    print(f"[API Key Manager] Rate limit detected, switching to next key (attempt {attempt + 1}/{max_retries})")
+                    continue
+                else:
+                    raise AnthropicError(
+                        "All API keys are rate limited. Please try again later.",
+                        error_type="rate_limit_error",
+                        status_code=429
+                    )
+            else:
+                raise
 
 def map_model_name(anthropic_model: str) -> str:
     """Map Anthropic model names to Gemini equivalents."""
@@ -173,14 +257,19 @@ async def stream_gemini_response(
     system_instruction: Optional[str] = None,
     include_thinking: bool = False
 ) -> AsyncGenerator[str, None]:
-    """Stream responses from Gemini in Anthropic format."""
-    api_key = get_next_api_key()
-    genai.configure(api_key=api_key)
+    """Stream responses from Gemini in Anthropic format with key rotation."""
+    def generate_stream():
+        model = genai.GenerativeModel(
+            model_name=gemini_model_name,
+            system_instruction=system_instruction
+        )
+        return model.generate_content(
+            messages,
+            generation_config=generation_config,
+            stream=True
+        )
     
-    model = genai.GenerativeModel(
-        model_name=gemini_model_name,
-        system_instruction=system_instruction
-    )
+    response = execute_with_key_rotation(generate_stream)
     
     message_start = {
         "type": "message_start",
@@ -208,12 +297,6 @@ async def stream_gemini_response(
         }
     }
     yield f"event: content_block_start\ndata: {json.dumps(content_block_start)}\n\n"
-    
-    response = model.generate_content(
-        messages,
-        generation_config=generation_config,
-        stream=True
-    )
     
     finish_reason = None
     last_chunk = None
@@ -266,12 +349,16 @@ async def stream_gemini_response(
 @app.get("/")
 async def health_check():
     """Health check endpoint."""
-    api_keys = get_api_keys()
+    keys = api_keys_state["keys"] if api_keys_state["keys"] else initialize_api_keys()
+    available_keys = sum(1 for key in keys if is_key_available(key))
+    
     return {
         "status": "healthy",
         "service": "Anthropic API Gateway (Gemini Backend)",
-        "available_api_keys": len(api_keys),
-        "version": "1.0.0"
+        "total_api_keys": len(keys),
+        "available_api_keys": available_keys,
+        "rate_limited_keys": len(api_keys_state["rate_limited"]),
+        "version": "1.1.0"
     }
 
 @app.get("/v1/models")
@@ -306,6 +393,7 @@ async def create_message(request: AnthropicRequest):
     - System prompts
     - Metadata (accepted but not sent to Gemini)
     - Temperature, top_p, top_k, stop_sequences parameters
+    - Automatic API key rotation on rate limits
     
     Explicitly Rejected (with clear error messages):
     - Tool definitions (tools parameter)
@@ -378,18 +466,17 @@ async def create_message(request: AnthropicRequest):
                 media_type="text/event-stream"
             )
         else:
-            api_key = get_next_api_key()
-            genai.configure(api_key=api_key)
+            def generate_response():
+                model = genai.GenerativeModel(
+                    model_name=gemini_model,
+                    system_instruction=request.system
+                )
+                return model.generate_content(
+                    gemini_messages,
+                    generation_config=generation_config
+                )
             
-            model = genai.GenerativeModel(
-                model_name=gemini_model,
-                system_instruction=request.system
-            )
-            
-            response = model.generate_content(
-                gemini_messages,
-                generation_config=generation_config
-            )
+            response = execute_with_key_rotation(generate_response)
             
             content_blocks = [
                 {
