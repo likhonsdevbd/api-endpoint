@@ -9,12 +9,15 @@ A FastAPI application that provides an Anthropic API-compatible endpoint using G
 - Enable seamless integration with Anthropic-compatible tools
 
 ## Recent Changes
-- **2025-11-13**: Initial project setup
+- **2025-11-13**: Initial project setup and improvements
   - Created FastAPI application with /anthropic endpoint
   - Implemented model name mapping (Claude → Gemini)
   - Added streaming and non-streaming response support
   - Set up multiple API key rotation
   - Created Vercel deployment configuration
+  - Implemented Anthropic-compatible error handling
+  - Added support for tool_use/tool_result content blocks in message history
+  - Documented limitations for automatic tool invocation and thinking blocks
 
 ## Project Architecture
 
@@ -49,9 +52,19 @@ A FastAPI application that provides an Anthropic API-compatible endpoint using G
 4. **Features**:
    - Streaming and non-streaming responses
    - System prompts support
-   - Temperature, top_p, top_k parameter mapping
-   - Anthropic-compatible error responses
+   - Temperature, top_p, top_k, stop_sequences parameter mapping
+   - Anthropic-compatible error responses (all errors return proper Anthropic format)
    - Token usage reporting
+   - Multi-turn conversation support with text message preservation
+   - Metadata support (accepted but not sent to Gemini)
+
+5. **Limitations & Explicit Rejections**:
+   - **Tool Definitions**: Requests with `tools` parameter are rejected with clear error messages. Gemini does not support Anthropic's tool invocation format.
+   - **Tool Use/Result Blocks**: Requests with `tool_use` or `tool_result` content blocks are rejected. For tool-based workflows, execute tools externally and send only the text results in regular message blocks.
+   - **Thinking Blocks**: Requests with `thinking` enabled are rejected. Gemini does not support Anthropic's thinking block format.
+   - **Image/Document Input**: Not supported (Anthropic API spec limitation noted in requirements)
+   - **Stop Sequence Reporting**: Gemini does not expose which specific stop sequence was matched. `stop_reason` correctly reports `max_tokens` when the token limit is hit, and `end_turn` for all other terminations (natural end, safety filters, etc.). `stop_sequence` field will always be null.
+   - **All Errors Use Anthropic Format**: Validation errors, authentication errors, and all other errors return Anthropic-compatible error format (not FastAPI's default schema)
 
 ## Environment Variables
 
