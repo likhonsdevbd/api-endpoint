@@ -347,8 +347,61 @@ async def stream_gemini_response(
     yield f"event: message_stop\ndata: {{}}\n\n"
 
 @app.get("/")
+async def index_page(request: Request):
+    """Documentation and information page."""
+    keys = api_keys_state["keys"] if api_keys_state["keys"] else initialize_api_keys()
+    available_keys = sum(1 for key in keys if is_key_available(key))
+    
+    # Get the base URL from the request
+    base_url = str(request.base_url).rstrip('/')
+    
+    html_content = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anthropic API Gateway - Gemini Backend</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }}
+        .header {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }}
+        .header h1 {{
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }}
+        .header p {{
+            font-size: 1.2em;
+            opacity: 0.9;
+        }}
+
+
+@app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """JSON health check endpoint."""
     keys = api_keys_state["keys"] if api_keys_state["keys"] else initialize_api_keys()
     available_keys = sum(1 for key in keys if is_key_available(key))
     
@@ -360,6 +413,280 @@ async def health_check():
         "rate_limited_keys": len(api_keys_state["rate_limited"]),
         "version": "1.1.0"
     }
+
+        .status {{
+            display: flex;
+            justify-content: space-around;
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }}
+        .status-item {{
+            text-align: center;
+        }}
+        .status-value {{
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }}
+        .status-label {{
+            color: #6c757d;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }}
+        .content {{
+            padding: 40px;
+        }}
+        .section {{
+            margin-bottom: 40px;
+        }}
+        .section h2 {{
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.8em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }}
+        .section h3 {{
+            color: #555;
+            margin: 20px 0 10px;
+            font-size: 1.3em;
+        }}
+        .code-block {{
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            position: relative;
+            margin: 15px 0;
+        }}
+        .code-block pre {{
+            margin: 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }}
+        .copy-btn {{
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: background 0.3s;
+        }}
+        .copy-btn:hover {{
+            background: #5568d3;
+        }}
+        .copy-btn:active {{
+            background: #4a5bbd;
+        }}
+        .endpoint {{
+            background: #e7f3ff;
+            padding: 15px;
+            border-left: 4px solid #667eea;
+            margin: 10px 0;
+            border-radius: 4px;
+        }}
+        .endpoint code {{
+            background: #d1e7ff;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }}
+        .feature-list {{
+            list-style: none;
+            padding-left: 0;
+        }}
+        .feature-list li {{
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
+        }}
+        .feature-list li:before {{
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #28a745;
+            font-weight: bold;
+        }}
+        .warning {{
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }}
+        .footer {{
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            color: #6c757d;
+            font-size: 0.9em;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Anthropic API Gateway</h1>
+            <p>Claude-compatible API powered by Google Gemini</p>
+        </div>
+        
+        <div class="status">
+            <div class="status-item">
+                <div class="status-value">✓</div>
+                <div class="status-label">Status: Healthy</div>
+            </div>
+            <div class="status-item">
+                <div class="status-value">{len(keys)}</div>
+                <div class="status-label">Total API Keys</div>
+            </div>
+            <div class="status-item">
+                <div class="status-value">{available_keys}</div>
+                <div class="status-label">Available Keys</div>
+            </div>
+            <div class="status-item">
+                <div class="status-value">{len(api_keys_state["rate_limited"])}</div>
+                <div class="status-label">Rate Limited</div>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="section">
+                <h2>📋 Quick Start</h2>
+                <p>This gateway provides an Anthropic-compatible API interface backed by Google Gemini models. No API key required in requests!</p>
+                
+                <h3>Base URL</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this, '{base_url}')">Copy</button>
+                    <pre>{base_url}</pre>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>🔧 Claude Desktop Configuration</h2>
+                <p>Copy and paste this into your <code>~/.claude/settings.json</code> file:</p>
+                
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this, claudeConfig)">Copy</button>
+                    <pre id="claude-config">{{
+  "apiProviders": [
+    {{
+      "name": "Gemini Gateway",
+      "baseUrl": "{base_url}",
+      "apiType": "anthropic"
+    }}
+  ],
+  "defaultProvider": "Gemini Gateway",
+  "model": "claude-3-5-sonnet-20241022",
+  "maxTokens": 4096
+}}</pre>
+                </div>
+                
+                <div class="warning">
+                    <strong>Note:</strong> On macOS/Linux, the file is at <code>~/.claude/settings.json</code><br>
+                    On Windows, it's at <code>%APPDATA%\.claude\settings.json</code>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>🎯 API Endpoints</h2>
+                
+                <div class="endpoint">
+                    <strong>POST</strong> <code>/v1/messages</code><br>
+                    Create a message (Anthropic-compatible)
+                </div>
+                
+                <div class="endpoint">
+                    <strong>GET</strong> <code>/v1/models</code><br>
+                    List available models
+                </div>
+                
+                <div class="endpoint">
+                    <strong>GET</strong> <code>/health</code><br>
+                    Health check (JSON response)
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>💬 Example Request</h2>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard(this, curlExample)">Copy</button>
+                    <pre id="curl-example">curl -X POST {base_url}/v1/messages \\
+  -H "Content-Type: application/json" \\
+  -d '{{
+    "model": "claude-3-5-sonnet-20241022",
+    "max_tokens": 1024,
+    "messages": [
+      {{"role": "user", "content": "Hello! What can you help me with?"}}
+    ]
+  }}'</pre>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>✨ Features</h2>
+                <ul class="feature-list">
+                    <li>Anthropic API compatible endpoints</li>
+                    <li>Automatic API key rotation</li>
+                    <li>Smart rate limit handling</li>
+                    <li>Streaming and non-streaming responses</li>
+                    <li>System prompts support</li>
+                    <li>Temperature, top_p, top_k controls</li>
+                    <li>Multi-turn conversations</li>
+                    <li>Token usage reporting</li>
+                </ul>
+            </div>
+            
+            <div class="section">
+                <h2>🤖 Available Models</h2>
+                <div class="code-block">
+                    <pre>claude-3-5-sonnet-20241022  →  gemini-1.5-pro
+claude-3-opus-20240229      →  gemini-1.5-pro
+claude-3-sonnet-20240229    →  gemini-1.5-flash
+claude-3-haiku-20240307     →  gemini-1.5-flash-8b
+claude-3-5-haiku-20241022   →  gemini-1.5-flash</pre>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>📚 Additional Resources</h2>
+                <p>For complete documentation including Continue.dev, Cursor, and Cline configurations, see the <a href="https://github.com/your-repo/API_USAGE_GUIDE.md" style="color: #667eea;">API Usage Guide</a>.</p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            Version 1.1.0 | Powered by Google Gemini | Built with FastAPI
+        </div>
+    </div>
+    
+    <script>
+        const claudeConfig = document.getElementById('claude-config').textContent;
+        const curlExample = document.getElementById('curl-example').textContent;
+        
+        function copyToClipboard(button, text) {{
+            navigator.clipboard.writeText(text).then(() => {{
+                const originalText = button.textContent;
+                button.textContent = 'Copied!';
+                button.style.background = '#28a745';
+                setTimeout(() => {{
+                    button.textContent = originalText;
+                    button.style.background = '#667eea';
+                }}, 2000);
+            }});
+        }}
+    </script>
+</body>
+</html>
+    """
+    
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=html_content)
 
 @app.get("/v1/models")
 @app.get("/models")
